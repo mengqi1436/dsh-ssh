@@ -1,14 +1,14 @@
 /**
- * The SSH card body: three plain fields rendered with `ValueField` and
- * three credentials rendered with `SecretField`. The card does not reuse
+ * The SSH card body: three plain fields rendered with `TextField` and
+ * three credentials rendered with `PasswordField`. The card does not reuse
  * `PluginCard` because that chrome is keyed to the `settings.plugins`
- * locale namespace; we own a `dsh-ssh` namespace instead.
+ * locale namespace; we own a `dsh-ssh` namespace instead. `ValueField` and
+ * `SecretField` from `ui-settings-plugins` are internal and not exported
+ * from its client entry, so we keep tiny local stand-ins.
  */
 import { useState } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { ValueField, SecretField } from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
-import type { SshCardFace, SshCardState } from './card-controller.ts'
-import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type { CardFieldState, SshCardFace } from './card-controller.ts'
 import type { SshCardKey } from './locales.ts'
 
 /** Props the renderer binds for the SSH card. */
@@ -21,36 +21,105 @@ export type SshCardProps =
 type CardT = (key: SshCardKey) => string
 
 /** Localised chrome copy used by the card's header and footer. */
-const CHROME: Record<string, { expand: string; collapse: string; save: string; saving: string; discard: string; unsaved: string; saveFailed: string; readOnly: string }> = {
+const CHROME: Record<string, {
+  expand: string; collapse: string
+  save: string; saving: string; discard: string
+  unsaved: string; saveFailed: string; readOnly: string
+  overridden: string; reset: string; invalid: string
+}> = {
   zh: {
     expand: '展开', collapse: '折叠',
     save: '保存', saving: '保存中…', discard: '放弃',
     unsaved: '有未保存修改', saveFailed: '保存失败，请重试。',
     readOnly: '当前配置不可写。',
+    overridden: '已覆盖', reset: '重置', invalid: '请输入有效值',
   },
   en: {
     expand: 'Show settings', collapse: 'Hide settings',
     save: 'Save', saving: 'Saving…', discard: 'Discard',
     unsaved: 'Unsaved', saveFailed: 'Save failed; please retry.',
     readOnly: 'Current configuration is read-only.',
+    overridden: 'Overridden', reset: 'Reset', invalid: 'Please enter a valid value',
   },
 }
 
-function chromeCopy(locale: 'zh' | 'en'): typeof CHROME['zh'] {
-  return CHROME[locale]
+/** Minimal labelled text field. */
+function TextField(props: {
+  id: string
+  label: string
+  hint: string
+  field: CardFieldState
+  disabled: boolean
+  onEdit: (text: string) => void
+  onReset: () => void
+  chrome: typeof CHROME['zh']
+}) {
+  return (
+    <div>
+      <div>
+        <label htmlFor={props.id}>{props.label}</label>
+        {props.field.dirty ? (
+          <span>
+            <span>{props.chrome.overridden}</span>
+            <button type="button" disabled={props.disabled} onClick={props.onReset}>{props.chrome.reset}</button>
+          </span>
+        ) : null}
+      </div>
+      <input
+        id={props.id}
+        type="text"
+        value={props.field.text}
+        disabled={props.disabled}
+        onChange={(e) => { props.onEdit(e.target.value) }}
+        aria-invalid={props.field.invalid}
+      />
+      <p>{props.field.invalid ? props.chrome.invalid : props.hint}</p>
+    </div>
+  )
+}
+
+/** Minimal write-only password field. */
+function PasswordField(props: {
+  id: string
+  label: string
+  hint: string
+  field: CardFieldState
+  stateLabel: string
+  disabled: boolean
+  onEdit: (text: string) => void
+}) {
+  return (
+    <div>
+      <div>
+        <label htmlFor={props.id}>{props.label}</label>
+        <span>{props.stateLabel}</span>
+      </div>
+      <input
+        id={props.id}
+        type="password"
+        autoComplete="off"
+        value={props.field.text}
+        disabled={props.disabled}
+        onChange={(e) => { props.onEdit(e.target.value) }}
+      />
+      <p>{props.hint}</p>
+    </div>
+  )
 }
 
 /** Render the SSH card. */
 export function DshSshCard(props: SshCardProps) {
   const t = props.t as unknown as CardT
-  const state = props.useSshCard((snapshot) => snapshot)
+  const state = props.useSshCard((snapshot: import('./card-controller.ts').SshCardState) => snapshot)
   const disabled = !state.writable
   const [open, setOpen] = useState(false)
-  const chrome = chromeCopy((props.t as unknown as (key: string) => string)('sshTitle') === 'SSH' ? 'en' : 'zh')
+  // Pick chrome language by checking a distinct English-only label.
+  const isEnglish = t('sshHost') === 'Host'
+  const chrome: typeof CHROME['zh'] = isEnglish ? CHROME['en']! : CHROME['zh']!
   if (!state.available) return null
   const blocked = !state.dirty || state.invalid || state.saving
   return (
-    <li className="dsh-ssh-card">
+    <li>
       <button
         type="button"
         aria-expanded={open}
@@ -63,77 +132,67 @@ export function DshSshCard(props: SshCardProps) {
       {open ? (
         <div>
           {!state.writable ? <p role="status">{chrome.readOnly}</p> : null}
-          <ValueField
+          <TextField
             id="plugin-config-ssh-host"
             label={t('sshHost')}
             hint={t('sshHostHint')}
-            overriddenLabel={t('sshHost') === 'Host' ? 'Overridden' : '已覆盖'}
-            resetLabel={t('sshHost') === 'Host' ? 'Reset' : '重置'}
-            invalidLabel={t('sshHost') === 'Host' ? 'Please enter a valid value' : '请输入有效值'}
+            field={state.host}
             disabled={disabled}
-            {...state.host}
             onEdit={(text) => { props.edit('host', text) }}
             onReset={() => { props.resetField('host') }}
+            chrome={chrome}
           />
-          <ValueField
+          <TextField
             id="plugin-config-ssh-port"
             label={t('sshPort')}
             hint={t('sshPortHint')}
-            overriddenLabel={t('sshPort') === 'Port' ? 'Overridden' : '已覆盖'}
-            resetLabel={t('sshPort') === 'Port' ? 'Reset' : '重置'}
-            invalidLabel={t('sshPort') === 'Port' ? 'Please enter a valid number' : '请输入有效数字'}
-            numeric
+            field={state.port}
             disabled={disabled}
-            {...state.port}
             onEdit={(text) => { props.edit('port', text) }}
             onReset={() => { props.resetField('port') }}
+            chrome={chrome}
           />
-          <ValueField
+          <TextField
             id="plugin-config-ssh-username"
             label={t('sshUsername')}
             hint={t('sshUsernameHint')}
-            overriddenLabel={t('sshUsername') === 'Username' ? 'Overridden' : '已覆盖'}
-            resetLabel={t('sshUsername') === 'Username' ? 'Reset' : '重置'}
-            invalidLabel={t('sshUsername') === 'Username' ? 'Please enter a valid value' : '请输入有效值'}
+            field={state.username}
             disabled={disabled}
-            {...state.username}
             onEdit={(text) => { props.edit('username', text) }}
             onReset={() => { props.resetField('username') }}
+            chrome={chrome}
           />
-          <SecretField
+          <PasswordField
             id="plugin-config-ssh-password"
             label={t('sshPassword')}
             hint={t('sshPasswordHint')}
-            configured
+            field={state.password}
             stateLabel={t('sshPasswordState')}
             disabled={disabled}
-            {...state.password}
             onEdit={(text) => { props.edit('password', text) }}
           />
-          <SecretField
+          <PasswordField
             id="plugin-config-ssh-private-key"
             label={t('sshPrivateKey')}
             hint={t('sshPrivateKeyHint')}
-            configured
+            field={state.privateKey}
             stateLabel={t('sshPrivateKeyState')}
             disabled={disabled}
-            {...state.privateKey}
             onEdit={(text) => { props.edit('privateKey', text) }}
           />
-          <SecretField
+          <PasswordField
             id="plugin-config-ssh-passphrase"
             label={t('sshPassphrase')}
             hint={t('sshPassphraseHint')}
-            configured
+            field={state.passphrase}
             stateLabel={t('sshPassphraseState')}
             disabled={disabled}
-            {...state.passphrase}
             onEdit={(text) => { props.edit('passphrase', text) }}
           />
           <div>
             {state.failed ? <p role="status">{chrome.saveFailed}</p> : null}
             <button type="button" disabled={!state.dirty || state.saving} onClick={props.onDiscard}>{chrome.discard}</button>
-            <button type="button" disabled={blocked} onClick={props.onSave}>{chrome.saving && state.saving ? chrome.saving : chrome.save}</button>
+            <button type="button" disabled={blocked} onClick={props.onSave}>{state.saving ? chrome.saving : chrome.save}</button>
           </div>
         </div>
       ) : null}
