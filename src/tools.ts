@@ -32,15 +32,17 @@ export function registerTools(ctx: Context): void {
       },
     },
     output: {
+      // DSH value schema DSL: required is a per-property `required: true`
+      // marker (not a JSON-Schema `required: [...]` array on the object).
+      // `oneOf` represents exitCode's number | null union.
       schema: {
         type: 'object',
         properties: {
-          exitCode: { type: ['number', 'null'] },
-          stdout: { type: 'string' },
-          stderr: { type: 'string' },
-          truncated: { type: 'boolean' },
+          exitCode: { oneOf: [{ type: 'number' }, { type: 'null' }], required: true },
+          stdout: { type: 'string', required: true },
+          stderr: { type: 'string', required: true },
+          truncated: { type: 'boolean', required: true },
         },
-        required: ['exitCode', 'stdout', 'stderr', 'truncated'],
         additionalProperties: false,
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
@@ -63,7 +65,11 @@ export function registerTools(ctx: Context): void {
       'acknowledges the caller has finished a remote session.',
     parameters: {},
     output: {
-      schema: { type: 'object', properties: { disconnected: { type: 'boolean', const: true } }, required: ['disconnected'], additionalProperties: false },
+      schema: {
+        type: 'object',
+        properties: { disconnected: { type: 'boolean', const: true, required: true } },
+        additionalProperties: false,
+      },
       render: () => [{ type: 'text', text: '{"disconnected":true}' }],
     },
     async execute() {
