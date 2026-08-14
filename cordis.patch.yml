@@ -1,0 +1,5 @@
+# dsh-ssh bundle patch: mount the host plugin under its package name,
+# resolved through the profile's node_modules.
+- insert:
+    - id: dsh-ssh
+      name: dsh-ssh
